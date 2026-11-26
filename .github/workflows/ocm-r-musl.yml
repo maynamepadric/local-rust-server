@@ -35,7 +35,7 @@ jobs:
       - name: Motor (horizon-client, sunucu derlemesi)
         continue-on-error: true
         run: |
-          cargo zigbuild --release -p horizon-client --no-default-features --bin horizon-client --target "$TARGET" 2>&1 | tee engine.log
+          cargo zigbuild --release -p horizon-game --no-default-features --bin horizon-client --target "$TARGET" 2>&1 | tee engine.log
 
       - name: Ozet
         if: always()
