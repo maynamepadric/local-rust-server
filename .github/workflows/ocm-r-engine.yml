@@ -1,0 +1,76 @@
+name: ocm-r-engine
+# OCM R denemesi: Horizon motorunu (--no-default-features = sunucu derlemesi) aarch64-android icin derler.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      NDK_VERSION: 28.2.13676358
+      TARGET: aarch64-linux-android
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust arac zinciri
+        run: |
+          rustup show
+          rustup target add "$TARGET"
+
+      - name: Android NDK
+        run: |
+          sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager | head -1)"
+          yes | "$sdkmanager" --sdk_root="$ANDROID_HOME" "ndk;$NDK_VERSION" >/dev/null
+          tc="$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64"
+          {
+            echo "CC_aarch64_linux_android=$tc/bin/aarch64-linux-android28-clang"
+            echo "CXX_aarch64_linux_android=$tc/bin/aarch64-linux-android28-clang++"
+            echo "AR_aarch64_linux_android=$tc/bin/llvm-ar"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$tc/bin/aarch64-linux-android28-clang"
+          } >> "$GITHUB_ENV"
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ocmr-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ocmr-
+
+      - name: Motor (horizon-client, sunucu derlemesi)
+        id: engine
+        continue-on-error: true
+        run: |
+          cargo build --release -p horizon-client --no-default-features --bin horizon-client --target "$TARGET" 2>&1 | tee engine.log
+
+      - name: Yonetici (horizon-server)
+        id: sup
+        continue-on-error: true
+        run: |
+          cargo build --release -p horizon-server --target "$TARGET" 2>&1 | tee supervisor.log
+
+      - name: Ozet
+        if: always()
+        run: |
+          mkdir -p out
+          for b in horizon-client horizon-server; do
+            f="target/$TARGET/release/$b"
+            if [ -f "$f" ]; then
+              cp "$f" out/
+              echo "== $b"; ls -l "$f"; file "$f" || true
+              readelf -d "$f" | grep NEEDED || true
+            else
+              echo "== $b: URETILMEDI"
+            fi
+          done
+          cp engine.log supervisor.log out/ 2>/dev/null || true
+          cp LICENSE THIRD_PARTY_NOTICES.md out/ 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ocm-r-engine-arm64
+          path: out/
