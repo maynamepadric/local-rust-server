@@ -120,7 +120,7 @@ fn behind() -> bool {
         if nice + BEHIND <= 19 {
             libc::setpriority(libc::PRIO_PROCESS as _, 0, nice + BEHIND) == 0
         } else {
-            let param = libc::sched_param { sched_priority: 0 };
+            let param = { let mut p: libc::sched_param = unsafe { std::mem::zeroed() }; p.sched_priority = 0; p };
             libc::sched_setscheduler(0, libc::SCHED_IDLE, &param) == 0
         }
     }
@@ -141,7 +141,7 @@ pub fn idle_current() -> bool {
 
 #[cfg(target_os = "linux")]
 fn idle() -> bool {
-    let param = libc::sched_param { sched_priority: 0 };
+    let param = { let mut p: libc::sched_param = unsafe { std::mem::zeroed() }; p.sched_priority = 0; p };
     // SAFETY: sets the calling thread's own policy (pid 0); `param` lives
     // across the call.
     unsafe { libc::sched_setscheduler(0, libc::SCHED_IDLE, &param) == 0 }
