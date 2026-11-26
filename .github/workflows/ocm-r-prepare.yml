@@ -1,0 +1,65 @@
+name: ocm-r-prepare
+# OCM R: horizon-prepare (oyun dosyalarini hazirlayan arac) ve horizon-server'i musl/statik derler.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TARGET: aarch64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust arac zinciri
+        run: |
+          rustup show
+          rustup target add "$TARGET"
+
+      - name: zig ve cargo-zigbuild
+        run: |
+          pip install --user ziglang cargo-zigbuild
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ocmr-musl-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ocmr-musl-
+
+      - name: horizon-prepare
+        continue-on-error: true
+        run: |
+          cargo zigbuild --release -p horizon-prepare --bin horizon-prepare --target "$TARGET" 2>&1 | tee prepare.log
+
+      - name: horizon-server
+        continue-on-error: true
+        run: |
+          cargo zigbuild --release -p horizon-server --bin horizon-server --target "$TARGET" 2>&1 | tee server.log
+
+      - name: Ozet
+        if: always()
+        run: |
+          mkdir -p out
+          for b in horizon-prepare horizon-server; do
+            f="target/$TARGET/release/$b"
+            if [ -f "$f" ]; then
+              cp "$f" out/
+              echo "== $b"; ls -l "$f"; file "$f" || true
+              readelf -d "$f" | grep NEEDED || echo "(NEEDED yok: statik)"
+            else
+              echo "== $b: URETILMEDI"
+            fi
+          done
+          cp prepare.log server.log out/ 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ocm-r-prepare-arm64
+          path: out/
