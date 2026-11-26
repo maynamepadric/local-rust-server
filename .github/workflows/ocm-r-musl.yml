@@ -1,0 +1,58 @@
+name: ocm-r-musl
+# OCM R denemesi B: motoru duz Linux/musl (statik) olarak derler; Termux'ta calisabilir.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TARGET: aarch64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust arac zinciri
+        run: |
+          rustup show
+          rustup target add "$TARGET"
+
+      - name: zig ve cargo-zigbuild
+        run: |
+          pip install --user ziglang cargo-zigbuild
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ocmr-musl-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ocmr-musl-
+
+      - name: Motor (horizon-client, sunucu derlemesi)
+        continue-on-error: true
+        run: |
+          cargo zigbuild --release -p horizon-client --no-default-features --bin horizon-client --target "$TARGET" 2>&1 | tee engine.log
+
+      - name: Ozet
+        if: always()
+        run: |
+          mkdir -p out
+          f="target/$TARGET/release/horizon-client"
+          if [ -f "$f" ]; then
+            cp "$f" out/
+            ls -l "$f"; file "$f" || true
+            readelf -d "$f" | grep NEEDED || echo "(NEEDED yok: statik)"
+          else
+            echo "horizon-client: URETILMEDI"
+          fi
+          cp engine.log out/ 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ocm-r-musl-arm64
+          path: out/
