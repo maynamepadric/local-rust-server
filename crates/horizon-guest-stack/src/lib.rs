@@ -87,6 +87,11 @@ fn prepare() -> std::io::Result<()> {
         describe(limit.rlim_max)
     );
     if std::env::var_os("HORIZON_STACK_REEXEC").is_some() {
+        // OCM R: the soft limit is already raised and applied by the re-exec; musl's
+        // pthread_getattr_np under-reports the main thread's extent, so trust the limit.
+        if limit.rlim_cur >= required {
+            return Ok(());
+        }
         return Err(std::io::Error::other(format!(
             "stack re-exec marker already set but the stack is insufficient ({limits})"
         )));
